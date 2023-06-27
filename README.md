@@ -1,10 +1,13 @@
-# Gitlab. Practice
+# Gitlab. Practice. 1
+
+## Tasks
+- Setup selfhosted gitlab  in cloud with container registry
 
 ## Contents
 - [Part 1. Creating VM with docker](#Part-1)</br>
 VM in yandex cloud with docker via Terraform
-- [Part 2. Gitlab install in container](#Part-2)  
-- [Part 3. ](#Part-3)  
+- [Part 2. Gitlab and Gitlab runner in container](#Part-2)  
+- [Part 3. Docker registry](#Part-3)  
 
 ## Part 1
 - Server is made with Terraform, docker is installed by passing configs to cloud-init.
@@ -83,6 +86,8 @@ output "external_ip_address_gilab" {
 
 </details>
 
+Installation of docker is automated with terraform:
+
 <details> 
   <summary>Metadata.yaml </summary>
 
@@ -124,14 +129,11 @@ packages:
 
 
 
-Gitlab runs in docker container, IP address is passed as a hostname:
+- Gitlab runs in docker container, IP address is passed as a hostname
+- For testing purposes instance is run on simple http, with no TLS
 ```
 export GITLAB_HOME=/srv/gitlab
-sudo docker run --detach --hostname 62.84.116.82 --publish 80:80 --name gitlab --restart always  --volume $GITLAB_HOME/config:/etc/gitlab  --volume $GITLAB_HOME/logs:/var/log/gitlab --volume $GITLAB_HOME/data:/var/opt/gitlab --shm-size 256m gitlab/gitlab-ce:latest
-```
-Checking gitlab installation inside container:
-```
-sudo docker logs -f gitlab
+sudo docker run --detach --hostname [ip_address] --publish 80:80 --name gitlab --restart always  --volume $GITLAB_HOME/config:/etc/gitlab  --volume $GITLAB_HOME/logs:/var/log/gitlab --volume $GITLAB_HOME/data:/var/opt/gitlab --shm-size 256m gitlab/gitlab-ce:latest
 ```
 Obtaining initial password:
 ```
@@ -162,17 +164,15 @@ docker exec -it gitlab gitlab-rake "gitlab:password:reset[root]"
 ```
 
 
+- There are 2 ways to make docker images
+  - First one is we can mount docker.sock "/var/run/docker.sock:/var/run/docker.sock" and use docker:version. </br>
+  - Second one is to use docker:version-dind as a service inside docker container, which isolates it from docker daemon on host machine
 
-
-there are 2 ways to make docker images, first one is we can mount docker.sock "/var/run/docker.sock:/var/run/docker.sock" and use docker:version 
-and second one is to use docker:version-dind as a service inside docker container. 
-
-starting from 19.03 dind creates certs and requires them for communication:
+starting from 19.03 dind creates certs and requires them for communication:</br>
 https://about.gitlab.com/blog/2019/07/31/docker-in-docker-with-docker-19-dot-03/
 
 
-Final configuration for runner:
-
+Final configuration for runner.
 config.toml 
 ```
 concurrent = 1
@@ -202,43 +202,24 @@ shutdown_timeout = 0
     volumes = ["/certs/client", "/cache"]
     shm_size = 0
 ```
-stages:          
-  - test
-  - deploy
-variables:
-  DOCKER_DRIVER: overlay2
-  DOCKER_TLS_CERTDIR: "/certs"
+![](./img/task2.jpg)
+## Part 3 
 
-lint-test-job:   
-  stage: test    
-  image: python:3.7-alpine3.17
-  script:
-    - python3 --version
+Docker registry. Volume is mounted on host machine to preserve images built by gitlab
 
-deploy-job:      
-  stage: deploy 
-  image: docker:24.0.2
-  # environment: production
-  services:
-    - name: docker:24.0.2-dind
-  script:
-    - ip route
-    - ip a 
-    - whoami
-    - docker ps 
-    - echo "Application successfully deployed."
-
-simple registry on http protocol:
-docker run -d --restart always -p 5000:5000 --name registry registry:2
-docker run -d --restart always -p 5000:5000 -v  /srv/gitlab/data/registry_data:/var/lib/registry/ --name registry registry:2
-
-../config/gitlab.rb 
 ```
-registry_external_url 'http://158.160.58.198:5000'
+docker run -d --restart always -p 5000:5000 -v  /srv/gitlab/data/registry_data:/var/lib/registry/ --name registry registry:2
+```
+
+Adjustments in gitlab  ../config/gitlab.rb  to connect it to registry
+
+```
+registry_external_url 'http://[ip_address]:5000'
 gitlab_rails['registry_enabled'] = true
 gitlab_rails['registry_host'] = "localhost"
 gitlab_rails['registry_port'] = "5000"
 gitlab_rails['registry_path'] = "/var/opt/gitlab/registry_data/docker/registry"
 registry['enable'] = true
-gitlab_rails['registry_api_url'] = "http://158.160.58.198:5000"
+gitlab_rails['registry_api_url'] = "http://[ip_address]:5000"
 ```
+![](./img/task3.jpg)
