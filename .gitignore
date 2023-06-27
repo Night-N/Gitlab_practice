@@ -1,0 +1,6 @@
+secret.*
+*.tfstate
+*.tfstate.*
+yc-terraform
+yc-terraform.pub
+.terraform/*
